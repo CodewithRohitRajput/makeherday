@@ -1,0 +1,217 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #fbf6ef;
+  --color-cream-deep: #f3e9dd;
+  --color-ink: #2b1a1d;
+  --color-muted: #7a6266;
+  --color-line: #e8d9cc;
+  --color-burgundy: #6b1d2f;
+  --color-burgundy-deep: #4c1220;
+  --color-rose: #c06476;
+  --color-blush: #f3dbd6;
+  --color-gold: #ad8758;
+
+  --shadow-soft: 0 1px 2px rgb(76 18 32 / 0.04), 0 8px 24px -8px rgb(76 18 32 / 0.12);
+  --shadow-lift: 0 2px 4px rgb(76 18 32 / 0.05), 0 24px 48px -16px rgb(76 18 32 / 0.25);
+
+  --animate-fade-up: fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-float-heart: float-heart linear infinite;
+  --animate-unseal: unseal 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fall: fall linear infinite;
+  --animate-twinkle: twinkle ease-in-out infinite;
+  --animate-burst: burst 1.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-flap-open: flap-open 0.6s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  --animate-letter-rise: letter-rise 0.6s 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  --animate-lid-off: lid-off 0.8s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  --animate-seal-pop: seal-pop 0.45s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  --animate-wiggle: wiggle 2.6s ease-in-out infinite;
+  --animate-drift: drift 7s ease-in-out infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes float-heart {
+    0% {
+      transform: translateY(0) rotate(0deg);
+      opacity: 0;
+    }
+    15% {
+      opacity: var(--fx-opacity, 0.5);
+    }
+    85% {
+      opacity: var(--fx-opacity, 0.5);
+    }
+    100% {
+      transform: translateY(-110vh) rotate(18deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes fall {
+    0% {
+      transform: translate3d(0, 0, 0) rotate(0deg);
+      opacity: 0;
+    }
+    10% {
+      opacity: var(--fx-opacity, 0.5);
+    }
+    50% {
+      transform: translate3d(var(--fx-sway, 0px), 55vh, 0) rotate(180deg);
+    }
+    90% {
+      opacity: var(--fx-opacity, 0.5);
+    }
+    100% {
+      transform: translate3d(0, 112vh, 0) rotate(360deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 0;
+      transform: scale(0.5) rotate(0deg);
+    }
+    50% {
+      opacity: 0.75;
+      transform: scale(1) rotate(20deg);
+    }
+  }
+
+  @keyframes burst {
+    0% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+    }
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate(calc(-50% + var(--bx)), calc(-50% + var(--by))) scale(1) rotate(var(--br));
+    }
+  }
+
+  @keyframes flap-open {
+    to {
+      transform: rotateX(180deg);
+    }
+  }
+
+  @keyframes letter-rise {
+    to {
+      transform: translateY(-38%);
+    }
+  }
+
+  @keyframes lid-off {
+    40% {
+      transform: translateY(-30%) rotate(-4deg);
+    }
+    to {
+      transform: translateY(-140%) rotate(-14deg);
+      opacity: 0;
+    }
+  }
+
+  @keyframes seal-pop {
+    to {
+      transform: scale(1.35);
+      opacity: 0;
+    }
+  }
+
+  @keyframes wiggle {
+    0%,
+    80%,
+    100% {
+      transform: rotate(0deg);
+    }
+    84% {
+      transform: rotate(-3deg);
+    }
+    88% {
+      transform: rotate(3deg);
+    }
+    92% {
+      transform: rotate(-2deg);
+    }
+    96% {
+      transform: rotate(1deg);
+    }
+  }
+
+  @keyframes drift {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    50% {
+      transform: translateY(-10px) rotate(-0.6deg);
+    }
+  }
+
+  @keyframes unseal {
+    from {
+      opacity: 0;
+      transform: translateY(24px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-cormorant);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Typography driven by a gift's design (see designStyle in lib/design.ts). */
+.g-heading {
+  font-family: var(--g-font-heading);
+  font-style: var(--g-heading-style);
+  font-weight: var(--g-heading-weight);
+}
+
+.g-body {
+  font-family: var(--g-font-body);
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+}
+
+::selection {
+  background: var(--color-blush);
+  color: var(--color-burgundy-deep);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -8,7 +8,6 @@ export const giftSchema = new mongoose.Schema({
     },
     giftType : {
         type : String,
-        enum : ["birthday", "love-letter", "anniversary"],
         required : true
     },
     senderName : String,

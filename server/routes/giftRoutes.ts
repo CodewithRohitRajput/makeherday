@@ -1,7 +1,8 @@
 import { Router } from "express"; 
-import { createGift } from "../controllers/giftController.js";  
+import { createGift, getGift } from "../controllers/giftController.js";
 const router = Router();
 
 router.post('/create', createGift);
+router.get('/:slug', getGift);
 
-export default router
+export default router;

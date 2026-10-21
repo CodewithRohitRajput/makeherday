@@ -1,15 +1,14 @@
 import type { Request, Response } from "express";
-import Gift from "../models/Gift.js";
+import Gift from "../models/gift.js";
 
 export const createGift = async (req: Request, res: Response) =>{
     try{
         const{giftType,senderName,recipientName,message,theme} = req.body;
         if(!giftType || !senderName || !recipientName || !theme){
-            return res.json(400).json({
+            return res.status(400).json({
                 success : false,
                 message : "All fields are required"
             })
-
         }
         const slugify = (await import("slugify")).default
 
@@ -37,7 +36,31 @@ export const createGift = async (req: Request, res: Response) =>{
         console.error("Create Gift Error", err)
         return res.status(500).json({
             success : false,
-            message : `Too many requests, please try after 5 minutes, ${err}`
+            message : "We couldn't create your gift. Please try again."
         })
     }
 }
+
+export const getGift = async (req: Request, res: Response) => {
+    try {
+        const gift = await Gift.findOne({ slug: req.params.slug });
+
+        if (!gift) {
+            return res.status(404).json({
+                success: false,
+                message: "Gift not found"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            gift
+        });
+    } catch (err) {
+        console.error("Get Gift Error", err);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to load gift"
+        });
+    }
+};
