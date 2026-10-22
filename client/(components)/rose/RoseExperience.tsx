@@ -97,11 +97,12 @@ export default function RoseExperience({ gift, embedded = false, demo = false }:
       style={{ background }}
     >
       <Canvas
-        shadows
-        dpr={lowPower ? [1, 1.25] : [1, 1.75]}
-        camera={{ position: [0, 0.9, 6.4], fov: 35 }}
-        // The EffectComposer does its own anti-aliasing, so the default framebuffer doesn't need it.
-        gl={{ antialias: false, powerPreference: "high-performance" }}
+        shadows={!lowPower}
+        dpr={lowPower ? [1, 1.5] : [1, 1.75]}
+        // A tight near/far range keeps depth precise enough that the stacked envelope layers don't z-fight on phones.
+        camera={{ position: [0, 0.9, 6.4], fov: 35, near: 1, far: 30 }}
+        // Desktop anti-aliases in the EffectComposer; phones skip post-processing, so the canvas does it.
+        gl={{ antialias: lowPower, powerPreference: "high-performance" }}
         className="absolute! inset-0"
         frameloop={visible ? "always" : "never"}
         onCreated={(state) => {
@@ -281,7 +282,7 @@ function Scene({
         intensity={2.2}
         color="#ffe6d0"
         castShadow
-        shadow-mapSize={lowPower ? [512, 512] : [1024, 1024]}
+        shadow-mapSize={[1024, 1024]}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
       />
@@ -304,7 +305,7 @@ function Scene({
         />
         <Rose rose={rose} />
       </group>
-      <WordOrbit count={phrases.length} labels={labels} />
+      <WordOrbit count={phrases.length} labels={labels} blur={!lowPower} />
       <FallingPetals rose={rose} from={finaleAt(phrases.length) - 0.5} />
 
       {interactive && (
@@ -319,10 +320,13 @@ function Scene({
           target={[0, 0.1, 0]}
         />
       )}
-      <EffectComposer multisampling={lowPower ? 0 : 4}>
-        <Bloom mipmapBlur luminanceThreshold={0.85} luminanceSmoothing={0.2} intensity={0.9} />
-        <Vignette offset={0.25} darkness={0.75} />
-      </EffectComposer>
+      {/* Bloom on mobile GPUs flashes the whole frame, so phones render without post-processing. */}
+      {!lowPower && (
+        <EffectComposer multisampling={4}>
+          <Bloom mipmapBlur luminanceThreshold={0.85} luminanceSmoothing={0.2} intensity={0.9} />
+          <Vignette offset={0.25} darkness={0.75} />
+        </EffectComposer>
+      )}
     </>
   );
 }

@@ -202,7 +202,12 @@ export default function Envelope3D({ seal, emblem, initial, glow, onOpen }: Enve
     const glowAmount = clamp01((t - BEATS.flapOpen) / 0.8) * (1 - away);
     const fade = 1 - away;
     root.current.traverse((o) => {
-      if (o instanceof THREE.Mesh) (o.material as THREE.Material).opacity = o === inside.current ? glowAmount : fade;
+      if (!(o instanceof THREE.Mesh)) return;
+      const material = o.material as THREE.Material;
+      material.opacity = o === inside.current ? glowAmount : fade;
+      // Transparent meshes get re-sorted every frame, and the closely stacked paper layers swap order and flicker,
+      // so they only go transparent while actually fading out.
+      if (o !== inside.current) material.transparent = fade < 1;
     });
     if (halo.current) {
       halo.current.material.opacity = glowAmount * 0.9;

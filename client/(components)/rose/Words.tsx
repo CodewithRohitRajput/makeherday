@@ -42,7 +42,7 @@ const view = new THREE.Vector3();
  * Moves the phrase labels (plain DOM, rendered by WordLayer) along an orbit
  * around the rose. Labels behind the rose dim, shrink and blur.
  */
-export function WordOrbit({ count, labels }: { count: number; labels: LabelRefs }) {
+export function WordOrbit({ count, labels, blur = true }: { count: number; labels: LabelRefs; blur?: boolean }) {
   const timeline = useTimeline();
   const { camera, viewport, size } = useThree();
 
@@ -69,17 +69,18 @@ export function WordOrbit({ count, labels }: { count: number; labels: LabelRefs 
       point.project(camera);
       const x = ((point.x + 1) / 2) * size.width;
       const y = ((1 - point.y) / 2) * size.height;
-      place(label, x, y, front, shown);
+      place(label, x, y, front, shown, blur);
     }
   });
 
   return null;
 }
 
-function place(label: HTMLElement, x: number, y: number, front: number, shown: number) {
+function place(label: HTMLElement, x: number, y: number, front: number, shown: number, blur: boolean) {
   label.style.opacity = String(shown * lerp(0.18, 1, front));
   label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${lerp(0.78, 1.05, front) * lerp(0.6, 1, shown)})`;
-  label.style.filter = `blur(${(1 - front) * 1.6 + (1 - shown) * 6}px)`;
+  // Repainting a CSS blur every frame over the canvas flickers on mobile Safari.
+  if (blur) label.style.filter = `blur(${(1 - front) * 1.6 + (1 - shown) * 6}px)`;
   label.style.zIndex = front > 0.5 ? "2" : "0";
   label.style.pointerEvents = shown > 0.5 ? "auto" : "none";
 }
