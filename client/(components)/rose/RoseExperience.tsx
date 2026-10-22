@@ -34,6 +34,8 @@ export default function RoseExperience({ gift, embedded = false, demo = false }:
   const message = gift.message.trim() || "Your message will appear here, floating around the rose.";
   const phrases = useMemo(() => toPhrases(message), [message]);
   const font = getFont(design.font);
+  // Phones get a lighter render: the full-quality pipeline makes mobile GPUs drop the WebGL context, which flickers.
+  const lowPower = useMemo(() => window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768, []);
 
   const timeline = useRef<number | null>(null);
   const clock = useRef<THREE.Clock | null>(null);
@@ -96,12 +98,15 @@ export default function RoseExperience({ gift, embedded = false, demo = false }:
     >
       <Canvas
         shadows
-        dpr={[1, 1.75]}
+        dpr={lowPower ? [1, 1.25] : [1, 1.75]}
         camera={{ position: [0, 0.9, 6.4], fov: 35 }}
-        gl={{ antialias: true, powerPreference: "high-performance" }}
+        // The EffectComposer does its own anti-aliasing, so the default framebuffer doesn't need it.
+        gl={{ antialias: false, powerPreference: "high-performance" }}
         className="absolute! inset-0"
         frameloop={visible ? "always" : "never"}
         onCreated={(state) => {
+          // Let the browser restore the context after a loss instead of leaving the canvas blank.
+          state.gl.domElement.addEventListener("webglcontextlost", (e) => e.preventDefault());
           clock.current = state.clock;
           setReady(true);
         }}
@@ -117,6 +122,7 @@ export default function RoseExperience({ gift, embedded = false, demo = false }:
             sender={sender}
             stage={stage}
             interactive={!demo}
+            lowPower={lowPower}
             onOpen={open}
           />
         </TimelineContext.Provider>
@@ -246,6 +252,7 @@ function Scene({
   sender,
   stage,
   interactive,
+  lowPower,
   onOpen,
 }: {
   design: Design;
@@ -256,6 +263,7 @@ function Scene({
   sender: string;
   stage: Stage;
   interactive: boolean;
+  lowPower: boolean;
   onOpen: () => void;
 }) {
   const aspect = useThree((s) => s.size.width / s.size.height);
@@ -273,7 +281,7 @@ function Scene({
         intensity={2.2}
         color="#ffe6d0"
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={lowPower ? [512, 512] : [1024, 1024]}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
       />
@@ -284,7 +292,7 @@ function Scene({
         <Lightformer form="ring" intensity={3} color={rose.glow} position={[-4, 1, -3]} scale={3} />
         <Lightformer form="rect" intensity={1} color="#ffffff" position={[5, 0, 2]} scale={[2, 6, 1]} rotation-y={-Math.PI / 2} />
       </Environment>
-      <Sparkles count={70} scale={[7, 5, 4]} size={2.6} speed={0.25} noise={1} opacity={0.75} color={rose.glow} />
+      <Sparkles count={lowPower ? 35 : 70} scale={[7, 5, 4]} size={2.6} speed={0.25} noise={1} opacity={0.75} color={rose.glow} />
 
       <group scale={Math.min(1, Math.max(0.65, aspect / 0.9))}>
         <Envelope3D
@@ -311,7 +319,7 @@ function Scene({
           target={[0, 0.1, 0]}
         />
       )}
-      <EffectComposer multisampling={4}>
+      <EffectComposer multisampling={lowPower ? 0 : 4}>
         <Bloom mipmapBlur luminanceThreshold={0.85} luminanceSmoothing={0.2} intensity={0.9} />
         <Vignette offset={0.25} darkness={0.75} />
       </EffectComposer>

@@ -10,7 +10,10 @@ let webgl: boolean | undefined;
 function supportsWebGL() {
   if (webgl === undefined) {
     try {
-      webgl = !!document.createElement("canvas").getContext("webgl2");
+      const gl = document.createElement("canvas").getContext("webgl2");
+      webgl = !!gl;
+      // Free the probe context; phones only allow a few live ones.
+      gl?.getExtension("WEBGL_lose_context")?.loseContext();
     } catch {
       webgl = false;
     }
