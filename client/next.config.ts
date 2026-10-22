@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // VS Code port-forwarding tunnels, used to test Cashfree checkout locally.
+  allowedDevOrigins: ["**.devtunnels.ms"],
   experimental: {
     agentFeedback: true,
   },

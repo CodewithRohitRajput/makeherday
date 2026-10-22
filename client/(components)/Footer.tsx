@@ -15,14 +15,14 @@ export default function Footer() {
           <Link href="/#gifts" className="transition-colors hover:text-cream">
             Gifts
           </Link>
-          <Link href="/#designs" className="transition-colors hover:text-cream">
-            Designs
+          <Link href="/#digital-rose" className="transition-colors hover:text-cream">
+            Digital Rose
           </Link>
           <Link href="/#how-it-works" className="transition-colors hover:text-cream">
             How it works
           </Link>
           <Link href="/create" className="transition-colors hover:text-cream">
-            Create a surprise
+            Send a rose
           </Link>
         </div>
       </div>

@@ -2,20 +2,10 @@ import Link from "next/link";
 import Footer from "@/(components)/Footer";
 import GiftCard from "@/(components)/GiftCard";
 import Hero from "@/(components)/Hero";
-import { ArrowRightIcon, LinkIcon, OccasionIcon, PaletteIcon, PenIcon } from "@/(components)/Icons";
-import LookCard from "@/(components)/LookCard";
+import { ArrowRightIcon, LinkIcon, OccasionIcon, PenIcon, RoseIcon } from "@/(components)/Icons";
 import Navbar from "@/(components)/Navbar";
-import { EFFECTS, FONTS, LAYOUTS, LOOKS, REVEALS } from "@/lib/design";
+import RoseShowcase from "@/(components)/RoseShowcase";
 import { FEATURED_OCCASIONS, OCCASIONS } from "@/lib/gifts";
-import { THEMES } from "@/lib/themes";
-
-const FEATURES = [
-  { value: THEMES.length, label: "colour themes" },
-  { value: LAYOUTS.length, label: "card styles" },
-  { value: FONTS.length, label: "typefaces" },
-  { value: REVEALS.length, label: "ways to open" },
-  { value: EFFECTS.length - 1, label: "backdrop effects" },
-];
 
 const STEPS = [
   {
@@ -24,9 +14,9 @@ const STEPS = [
     body: "Pick the occasion, add her name and yours, and write a message in your own words.",
   },
   {
-    icon: PaletteIcon,
-    title: "Design",
-    body: "Choose colours, card style, typeface and how it opens, and watch it come alive as you go.",
+    icon: RoseIcon,
+    title: "Pick her rose",
+    body: "Choose the rose colour, your wax seal and typeface, and watch it bloom in the live preview.",
   },
   {
     icon: LinkIcon,
@@ -41,6 +31,7 @@ export default function Home() {
       <Navbar />
       <main className="flex-1">
         <Hero />
+        <RoseShowcase />
 
         <section id="gifts" className="scroll-mt-16 border-t border-line/70 bg-cream-deep/40 py-20 sm:py-28">
           <div className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -68,41 +59,6 @@ export default function Home() {
                   </Link>
                 ))}
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="designs" className="scroll-mt-16 py-20 sm:py-28">
-          <div className="mx-auto max-w-6xl px-4 sm:px-6">
-            <SectionHeading
-              eyebrow="Designs"
-              title="Make it entirely yours"
-              body="Start from a curated look, then change anything: colours, card style, typeface, how it opens and what drifts behind it."
-            />
-            <dl className="mx-auto mt-10 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-5">
-              {FEATURES.map((f) => (
-                <div key={f.label} className="rounded-2xl border border-line bg-white/60 px-3 py-4 text-center">
-                  <dt className="sr-only">{f.label}</dt>
-                  <dd>
-                    <span className="block font-display text-4xl font-medium text-burgundy-deep">{f.value}</span>
-                    <span className="mt-0.5 block text-xs text-muted">{f.label}</span>
-                  </dd>
-                </div>
-              ))}
-            </dl>
-            <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {LOOKS.slice(0, 6).map((look) => (
-                <LookCard key={look.id} look={look} />
-              ))}
-            </div>
-            <div className="mt-10 text-center">
-              <Link
-                href="/create"
-                className="inline-flex h-12 items-center gap-2 rounded-full border border-line bg-white/60 px-6 text-sm font-medium text-burgundy transition-colors hover:border-rose/50 hover:bg-white"
-              >
-                Start from scratch
-                <ArrowRightIcon className="size-4" />
-              </Link>
             </div>
           </div>
         </section>
@@ -137,21 +93,16 @@ export default function Home() {
 
         <section className="px-4 py-20 sm:px-6 sm:py-28">
           <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[2rem] bg-[linear-gradient(140deg,#6b1d2f,#3a0e19)] px-6 py-16 text-center shadow-lift sm:px-12 sm:py-20">
-            <div
-              aria-hidden
-              className="absolute inset-0 bg-[radial-gradient(50%_80%_at_50%_0%,rgb(235_195_168/0.18),transparent_70%)]"
-            />
+            <div aria-hidden className="absolute inset-0 bg-[radial-gradient(50%_80%_at_50%_0%,rgb(235_195_168/0.18),transparent_70%)]" />
             <h2 className="relative font-display text-4xl font-medium text-cream sm:text-5xl">
               She&apos;ll remember how you made her feel.
             </h2>
-            <p className="relative mx-auto mt-4 max-w-lg text-cream/70">
-              Take two minutes today to create something she&apos;ll want to keep.
-            </p>
+            <p className="relative mx-auto mt-4 max-w-lg text-cream/70">Take two minutes today and send her a rose that never wilts.</p>
             <Link
               href="/create"
               className="group relative mt-9 inline-flex h-13 items-center gap-2.5 rounded-full bg-cream px-7 text-[0.95rem] font-medium text-burgundy-deep transition-all duration-300 hover:-translate-y-0.5 hover:bg-white"
             >
-              Create Your Surprise
+              Send her a Digital Rose
               <ArrowRightIcon className="size-4 transition-transform duration-300 group-hover:translate-x-0.5" />
             </Link>
           </div>

@@ -21,6 +21,15 @@ export function HeartIcon(props: IconProps) {
   );
 }
 
+export function LockIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="4.75" y="10.5" width="14.5" height="9.75" rx="2.25" />
+      <path d="M8.25 10.5V7.75a3.75 3.75 0 0 1 7.5 0v2.75" />
+    </svg>
+  );
+}
+
 export function HeartSolid(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
@@ -53,6 +62,16 @@ export function RingsIcon(props: IconProps) {
       <circle cx="9" cy="14" r="5.25" />
       <circle cx="15" cy="14" r="5.25" />
       <path d="m10.5 4.5 1.5-1.75 1.5 1.75-1.5 2.25-1.5-2.25Z" />
+    </svg>
+  );
+}
+
+export function RoseIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3.5c-2.6 0-4.75 1.9-4.75 4.6 0 2.9 2.1 5.15 4.75 5.15s4.75-2.25 4.75-5.15C16.75 5.4 14.6 3.5 12 3.5Z" />
+      <path d="M12 6.3c-1.25 0-2.1.85-2.1 1.9s.8 1.75 1.8 1.75 1.65-.7 1.65-1.55M7.6 6.6c1.2.4 2.2.2 3.1-.6M16.4 6.6c-1.2.4-2.2.2-3.1-.6" />
+      <path d="M12 13.25V21M12 17.2c1.6-1.75 3.4-2.1 5-1.65-.6 1.85-2.75 2.75-5 1.65ZM12 18.6c-1.3-1.3-2.8-1.5-4.1-1.1.55 1.4 2.25 2 4.1 1.1Z" />
     </svg>
   );
 }
@@ -162,6 +181,14 @@ export function DaisyIcon(props: IconProps) {
 export function StarIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
+      <path d="M12 3.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.65l5.9-.85L12 3.5Z" />
+    </svg>
+  );
+}
+
+export function StarSolid(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
       <path d="M12 3.5l2.6 5.3 5.9.85-4.25 4.15 1 5.85L12 16.9l-5.25 2.75 1-5.85L3.5 9.65l5.9-.85L12 3.5Z" />
     </svg>
   );

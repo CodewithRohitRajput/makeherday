@@ -13,7 +13,12 @@ export const giftSchema = new mongoose.Schema({
     senderName : String,
     recipientName: String,
     message : String,
-    theme : String
+    theme : String,
+    isPaid :{
+        type: Boolean,
+        default : false
+    }
+
 },{timestamps: true})
 
 

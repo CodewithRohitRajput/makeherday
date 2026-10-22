@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import { designStyle, getFont, parseDesign, type Design, type EffectId, type RevealId, type SealId } from "@/lib/design";
 import { getOccasion, type GiftType, type Occasion, type OccasionId } from "@/lib/gifts";
 import { HeartSolid, OccasionIcon, PetalSolid, SparkleSolid } from "./Icons";
+import RoseGift from "./rose/RoseGift";
 
 export interface GiftContent {
   giftType: GiftType;
@@ -20,12 +21,14 @@ interface GiftViewProps {
   sealed?: boolean;
   /** Smaller card used for the live preview next to the form. */
   compact?: boolean;
+  /** Skip the 3D rose and use the flat envelope instead (no WebGL). */
+  flat?: boolean;
 }
 
 type Phase = "closed" | "opening" | "open";
 
 /** How long each reveal animation plays before the card appears. */
-const OPEN_DELAY: Record<RevealId, number> = { seal: 450, envelope: 1150, giftbox: 850, none: 0 };
+const OPEN_DELAY: Record<RevealId, number> = { seal: 450, envelope: 1150, giftbox: 850, rose: 1150, none: 0 };
 
 interface Ctx {
   design: Design;
@@ -36,7 +39,7 @@ interface Ctx {
   compact: boolean;
 }
 
-export default function GiftView({ gift, sealed = false, compact = false }: GiftViewProps) {
+export default function GiftView({ gift, sealed = false, compact = false, flat = false }: GiftViewProps) {
   const design = useMemo(() => parseDesign(gift.theme, gift.giftType), [gift.theme, gift.giftType]);
   const [phase, setPhase] = useState<Phase>(!sealed || design.reveal === "none" ? "open" : "closed");
   const [celebrate, setCelebrate] = useState(sealed && design.reveal === "none" && design.burst);
@@ -58,6 +61,10 @@ export default function GiftView({ gift, sealed = false, compact = false }: Gift
     message: gift.message.trim(),
     compact,
   };
+
+  if (sealed && !flat && design.reveal === "rose") {
+    return <RoseGift gift={gift} />;
+  }
 
   if (phase !== "open") {
     return <Reveal ctx={ctx} opening={phase === "opening"} onOpen={() => setPhase("opening")} />;
@@ -81,6 +88,7 @@ function Reveal({ ctx, opening, onOpen }: { ctx: Ctx; opening: boolean; onOpen: 
     seal: "Tap the seal to open",
     envelope: "Tap the envelope to open",
     giftbox: "Tap the box to unwrap",
+    rose: "Tap the envelope to open",
     none: "",
   }[design.reveal];
 
@@ -100,7 +108,7 @@ function Reveal({ ctx, opening, onOpen }: { ctx: Ctx; opening: boolean; onOpen: 
 
       <div className={`relative grid place-items-center ${design.reveal === "seal" ? "mt-10" : "mt-8"}`}>
         {design.reveal === "seal" && <WaxSeal ctx={ctx} opening={opening} onOpen={onOpen} />}
-        {design.reveal === "envelope" && <Envelope ctx={ctx} opening={opening} onOpen={onOpen} />}
+        {(design.reveal === "envelope" || design.reveal === "rose") && <Envelope ctx={ctx} opening={opening} onOpen={onOpen} />}
         {design.reveal === "giftbox" && <GiftBox ctx={ctx} opening={opening} onOpen={onOpen} />}
       </div>
 

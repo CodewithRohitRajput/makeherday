@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { RoseIcon } from "./Icons";
 import Logo from "./Logo";
 
 const LINKS = [
+  { href: "/#digital-rose", label: "Digital Rose" },
   { href: "/#gifts", label: "Gifts" },
-  { href: "/#designs", label: "Designs" },
   { href: "/#how-it-works", label: "How it works" },
 ];
 
@@ -24,9 +25,10 @@ export default function Navbar() {
           ))}
           <Link
             href="/create"
-            className="rounded-full bg-burgundy px-4 py-2 text-sm font-medium text-cream shadow-soft transition-colors hover:bg-burgundy-deep sm:px-5"
+            className="inline-flex items-center gap-1.5 rounded-full bg-burgundy px-4 py-2 text-sm font-medium text-cream shadow-soft transition-colors hover:bg-burgundy-deep sm:px-5"
           >
-            Create a surprise
+            <RoseIcon className="size-4" />
+            Send a rose
           </Link>
         </div>
       </nav>

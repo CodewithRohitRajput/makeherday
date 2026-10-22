@@ -10,6 +10,7 @@ export interface Gift {
   recipientName: string;
   message: string;
   theme: string;
+  isPaid: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -70,4 +71,23 @@ export async function getGift(slug: string): Promise<Gift | null> {
     if (err instanceof ApiError && err.status === 404) return null;
     throw err;
   }
+}
+
+interface CreatePaymentResponse {
+  message: string;
+  orderId: string;
+  paymentSessionId: string;
+}
+
+/** Starts a Cashfree order for an unpaid gift. Fails with status 409 when it's already paid. */
+export function createPayment(giftId: string, customerPhone: string) {
+  return request<CreatePaymentResponse>("/pay/payment", {
+    method: "POST",
+    body: JSON.stringify({ giftId, customerPhone }),
+  });
+}
+
+export async function verifyPayment(orderId: string): Promise<boolean> {
+  const data = await request<{ paid: boolean }>(`/pay/verify?orderId=${encodeURIComponent(orderId)}`);
+  return data.paid;
 }

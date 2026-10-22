@@ -27,6 +27,7 @@
   --animate-seal-pop: seal-pop 0.45s cubic-bezier(0.65, 0, 0.35, 1) forwards;
   --animate-wiggle: wiggle 2.6s ease-in-out infinite;
   --animate-drift: drift 7s ease-in-out infinite;
+  --animate-glow-in: glow-in 2.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 
   @keyframes fade-up {
     from {
@@ -158,6 +159,19 @@
     }
     50% {
       transform: translateY(-10px) rotate(-0.6deg);
+    }
+  }
+
+  @keyframes glow-in {
+    from {
+      opacity: 0;
+      filter: blur(14px);
+      transform: translateY(10px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      filter: blur(0);
+      transform: none;
     }
   }
 

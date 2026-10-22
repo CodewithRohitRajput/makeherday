@@ -12,7 +12,8 @@ import { getTheme, isThemeId, THEMES } from "./themes";
 export type LayoutId = "classic" | "letter" | "postcard" | "minimal" | "keepsake";
 export type FontId = "elegant" | "script" | "classic" | "hand" | "modern";
 export type EffectId = "hearts" | "petals" | "sparkles" | "confetti" | "stars" | "bubbles" | "none";
-export type RevealId = "seal" | "envelope" | "giftbox" | "none";
+export type RevealId = "seal" | "envelope" | "giftbox" | "rose" | "none";
+export type RoseId = "red" | "pink" | "white" | "peach" | "midnight" | "velvet";
 export type SealId = "heart" | "initial" | "icon" | "star";
 export type Align = "start" | "center";
 
@@ -24,6 +25,8 @@ export interface Design {
   effect: EffectId;
   reveal: RevealId;
   seal: SealId;
+  /** Petal colour for the 3D rose reveal. */
+  rose: RoseId;
   align: Align;
   /** Celebration burst when the gift is opened. */
   burst: boolean;
@@ -78,12 +81,41 @@ export const EFFECTS: { id: EffectId; name: string }[] = [
   { id: "none", name: "None" },
 ];
 
-export const REVEALS: { id: RevealId; name: string; description: string }[] = [
+export const REVEALS: { id: RevealId; name: string; description: string; badge?: string }[] = [
+  { id: "rose", name: "Digital Rose", description: "A 3D rose blooms, your words float around it", badge: "Popular" },
   { id: "seal", name: "Wax seal", description: "Tap the seal to open" },
   { id: "envelope", name: "Envelope", description: "The flap lifts, the letter rises" },
   { id: "giftbox", name: "Gift box", description: "Untie the ribbon, lift the lid" },
   { id: "none", name: "Instant", description: "Opens straight to the message" },
 ];
+
+export interface RoseOption {
+  id: RoseId;
+  name: string;
+  /** Mid-petal colour. */
+  petal: string;
+  /** Shadowed petal edges and the heart of the bloom. */
+  deep: string;
+  /** Pale tint where the petal meets the stem. */
+  base: string;
+  /** Velvet highlight. */
+  sheen: string;
+  /** Colour of the light around the scene. */
+  glow: string;
+}
+
+export const ROSES: RoseOption[] = [
+  { id: "red", name: "Classic red", petal: "#9c0a22", deep: "#36020a", base: "#d9944f", sheen: "#c8304a", glow: "#ff4d6d" },
+  { id: "pink", name: "Blush pink", petal: "#e98aa2", deep: "#9c3553", base: "#fbe6c0", sheen: "#f2b6c6", glow: "#ff9ab5" },
+  { id: "white", name: "Pearl white", petal: "#f4eee4", deep: "#b9a690", base: "#f2e3a8", sheen: "#e8e2da", glow: "#fff1d6" },
+  { id: "peach", name: "Peach", petal: "#f5a47c", deep: "#b85634", base: "#fbe3a4", sheen: "#f0b896", glow: "#ffb38a" },
+  { id: "midnight", name: "Midnight blue", petal: "#2f47b8", deep: "#0c1240", base: "#9fb3ff", sheen: "#6f86e0", glow: "#6f8cff" },
+  { id: "velvet", name: "Black velvet", petal: "#3d0a16", deep: "#0d0204", base: "#7a2a33", sheen: "#a8344c", glow: "#c2304f" },
+];
+
+export function getRose(id: RoseId): RoseOption {
+  return ROSES.find((r) => r.id === id) ?? ROSES[0];
+}
 
 export const SEALS: { id: SealId; name: string }[] = [
   { id: "heart", name: "Heart" },
@@ -107,6 +139,7 @@ export interface Look {
   description: string;
   design: Pick<Design, "theme" | "layout" | "font" | "effect" | "reveal" | "seal" | "align">;
 }
+
 
 export const LOOKS: Look[] = [
   {
@@ -178,6 +211,7 @@ export function defaultDesign(occasionId: OccasionId = "birthday"): Design {
     effect: "hearts",
     reveal: "seal",
     seal: "heart",
+    rose: "red",
     align: "start",
     burst: true,
     accent: "",
@@ -203,6 +237,7 @@ const KEYS = {
   effect: "e",
   reveal: "r",
   seal: "s",
+  rose: "rc",
   align: "a",
   accent: "c",
   heading: "h",
@@ -247,6 +282,7 @@ export function parseDesign(raw: string | null | undefined, giftType: string): D
     effect: pick(p.get(KEYS.effect), EFFECTS, base.effect),
     reveal: pick(p.get(KEYS.reveal), REVEALS, base.reveal),
     seal: pick(p.get(KEYS.seal), SEALS, base.seal),
+    rose: pick(p.get(KEYS.rose), ROSES, base.rose),
     align: p.get(KEYS.align) === "center" ? "center" : "start",
     burst: p.get("b") !== "0",
     accent: HEX.test(accent) ? accent : "",
@@ -257,17 +293,13 @@ export function parseDesign(raw: string | null | undefined, giftType: string): D
   };
 }
 
+/** "Surprise me": a random rose colour, seal and typeface. */
 export function randomDesign(current: Design): Design {
   const any = <T,>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)];
-  const layout = any(LAYOUTS);
   return {
     ...current,
-    theme: any(THEMES).id,
-    layout: layout.id,
-    align: layout.align,
+    rose: any(ROSES).id,
     font: any(FONTS).id,
-    effect: any(EFFECTS.filter((e) => e.id !== "none")).id,
-    reveal: any(REVEALS.filter((r) => r.id !== "none")).id,
     seal: any(SEALS).id,
     accent: "",
   };

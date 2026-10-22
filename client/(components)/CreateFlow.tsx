@@ -2,56 +2,46 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
-import { createGift } from "@/lib/api";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { ApiError, createGift, createPayment } from "@/lib/api";
 import {
+  designColors,
   designForOccasion,
   designStyle,
-  EFFECTS,
   FONTS,
-  getLook,
-  LAYOUTS,
-  LOOKS,
-  pageBackdrop,
   parseDesign,
   randomDesign,
-  REVEALS,
+  ROSES,
   SEALS,
   serializeDesign,
   SIGNOFF_PRESETS,
   TEXT_LIMITS,
   type Design,
-  type EffectId,
-  type LayoutId,
-  type RevealId,
 } from "@/lib/design";
 import { getOccasion, isOccasionId, OCCASIONS, type OccasionId } from "@/lib/gifts";
-import { getTheme, THEME_GROUPS, THEMES, type ThemeGroup } from "@/lib/themes";
-import FloatingEffect from "./FloatingEffect";
-import GiftView, { Emblem, type GiftContent } from "./GiftView";
+import { GIFT_PRICE, normalizePhone, openCheckout, savePendingPayment } from "@/lib/payment";
+import { Emblem, type GiftContent } from "./GiftView";
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
   ChatIcon,
   CheckIcon,
   CloseIcon,
-  EnvelopeIcon,
   EyeIcon,
-  GiftBoxIcon,
-  HeartSolid,
   LinkIcon,
+  LockIcon,
   MailIcon,
   OccasionIcon,
   PaletteIcon,
   PenIcon,
-  PetalSolid,
   RefreshIcon,
+  RoseIcon,
   ShareIcon,
   ShuffleIcon,
   SparkleIcon,
-  SparkleSolid,
-  StarIcon,
+  StarSolid,
 } from "./Icons";
+import RoseGift from "./rose/RoseGift";
 
 type Step = "write" | "design" | "preview" | "share";
 
@@ -64,7 +54,7 @@ const STEPS: { id: Step; label: string }[] = [
 
 const MESSAGE_LIMIT = 800;
 const NAME_LIMIT = 40;
-const DRAFT_KEY = "mhd:draft:v1";
+export const DRAFT_KEY = "mhd:draft:v1";
 
 interface Draft {
   senderName: string;
@@ -77,26 +67,31 @@ interface Draft {
 
 type TextKey = "senderName" | "recipientName" | "message";
 
-function initialDraft(type: string | null, lookId: string | null): Draft {
+/** Every gift is a Digital Rose; links can preselect its colour with `?rose=`. */
+function initialDraft(type: string | null, roseId: string | null): Draft {
   const design = designForOccasion(isOccasionId(type) ? type : "birthday");
-  const look = getLook(lookId);
+  const rose = ROSES.find((r) => r.id === roseId);
   return {
     senderName: "",
     recipientName: "",
     message: "",
-    design: look ? { ...design, ...look.design } : design,
-    designTouched: !!look,
+    design: { ...design, reveal: "rose", ...(rose && { rose: rose.id }) },
+    designTouched: false,
   };
 }
 
 export default function CreateFlow() {
   const searchParams = useSearchParams();
   const typeParam = searchParams.get("type");
-  const lookParam = searchParams.get("look");
-  const origin = searchParams.toString();
+  const roseParam = searchParams.get("rose");
+  // `?resume=pay` brings the sender back to checkout after a failed payment.
+  const resumePayment = searchParams.get("resume") === "pay";
+  const startParams = new URLSearchParams(searchParams);
+  startParams.delete("resume");
+  const origin = startParams.toString();
 
   const [step, setStep] = useState<Step>("write");
-  const [draft, setDraft] = useState<Draft>(() => initialDraft(typeParam, lookParam));
+  const [draft, setDraft] = useState<Draft>(() => initialDraft(typeParam, roseParam));
   const [errors, setErrors] = useState<Partial<Record<TextKey, string>>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -104,7 +99,11 @@ export default function CreateFlow() {
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [restored, setRestored] = useState(false);
   const [mobilePreview, setMobilePreview] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const loaded = useRef(false);
+  /** The saved gift, reused when payment is retried unless the content changed since. */
+  const created = useRef<{ key: string; id: string; slug: string } | null>(null);
 
   // Restore an unfinished draft. A draft started from a different link only keeps the names.
   useEffect(() => {
@@ -120,17 +119,25 @@ export default function CreateFlow() {
           recipientName: String(saved.recipientName ?? "").slice(0, NAME_LIMIT),
           ...(sameStart && {
             message: String(saved.message ?? "").slice(0, MESSAGE_LIMIT),
-            design: parseDesign(saved.theme, saved.giftType),
+            design: { ...parseDesign(saved.theme, saved.giftType), reveal: "rose" },
             designTouched: !!saved.designTouched,
           }),
         }));
         setRestored(true);
+        if (resumePayment && sameStart && saved.message && saved.recipientName && saved.senderName) setStep("preview");
       }
     } catch {
       // Storage can be unavailable (private mode, blocked cookies); start fresh.
     }
     loaded.current = true;
-  }, [origin]);
+  }, [origin, resumePayment]);
+
+  // Coming back from Cashfree with the browser's back button restores this page mid-payment.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => e.persisted && setSubmitting(false);
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
 
   const { design } = draft;
   const occasion = getOccasion(design.occasion);
@@ -167,8 +174,8 @@ export default function CreateFlow() {
   const chooseOccasion = (id: OccasionId) => {
     setDraft((d) => {
       if (d.designTouched) return { ...d, design: { ...d.design, occasion: id } };
-      const { heading, signoff, date, postscript } = d.design;
-      return { ...d, design: { ...designForOccasion(id), heading, signoff, date, postscript } };
+      const { heading, signoff, date, postscript, rose } = d.design;
+      return { ...d, design: { ...designForOccasion(id), reveal: "rose", rose, heading, signoff, date, postscript } };
     });
     setSuggestionIndex(0);
   };
@@ -179,7 +186,7 @@ export default function CreateFlow() {
   };
 
   const startFresh = () => {
-    setDraft(initialDraft(typeParam, lookParam));
+    setDraft(initialDraft(typeParam, roseParam));
     setErrors({});
     setRestored(false);
     try {
@@ -211,25 +218,50 @@ export default function CreateFlow() {
     else go("write");
   };
 
-  const submit = async () => {
+  const finish = (slug: string) => {
+    setShareUrl(`${window.location.origin}/g/${slug}`);
+    try {
+      localStorage.removeItem(DRAFT_KEY);
+    } catch {}
+    go("share");
+  };
+
+  const pay = async (e: FormEvent) => {
+    e.preventDefault();
+    const customerPhone = normalizePhone(phone);
+    if (!customerPhone) {
+      setPhoneError("Please enter a valid 10-digit mobile number.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
       const trim = (s: string) => s.trim();
-      const { gift: created } = await createGift({
+      const input = {
         ...content,
         senderName: trim(draft.senderName),
         recipientName: trim(draft.recipientName),
         message: trim(draft.message),
-      });
-      setShareUrl(`${window.location.origin}/g/${created.slug}`);
+      };
+      const key = JSON.stringify(input);
+      if (created.current?.key !== key) {
+        const { gift } = await createGift(input);
+        created.current = { key, id: gift._id, slug: gift.slug };
+      }
+      const { id, slug } = created.current;
+
+      let session: Awaited<ReturnType<typeof createPayment>>;
       try {
-        localStorage.removeItem(DRAFT_KEY);
-      } catch {}
-      go("share");
+        session = await createPayment(id, customerPhone);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) return finish(slug);
+        throw err;
+      }
+      savePendingPayment({ orderId: session.orderId, slug, recipient: input.recipientName });
+      // Navigates away to Cashfree, so the button keeps spinning on success.
+      await openCheckout(session.paymentSessionId);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
-    } finally {
       setSubmitting(false);
     }
   };
@@ -246,7 +278,7 @@ export default function CreateFlow() {
             <form onSubmit={goToDesign} noValidate className="animate-fade-up space-y-10">
               <div>
                 <h1 className="font-display text-4xl font-medium text-burgundy-deep sm:text-5xl">Write your gift</h1>
-                <p className="mt-3 text-muted">Pick the occasion and say it in your own words. You&apos;ll design the look next.</p>
+                <p className="mt-3 text-muted">Pick the occasion and say it in your own words. You&apos;ll design her rose next.</p>
               </div>
 
               {restored && (
@@ -257,6 +289,8 @@ export default function CreateFlow() {
                   </button>
                 </div>
               )}
+
+              <RoseBanner design={design} onChange={setDesign} />
 
               <Fieldset legend="1. What's the occasion?">
                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
@@ -458,19 +492,12 @@ export default function CreateFlow() {
         <div className="mt-10 animate-fade-up">
           <div className="text-center">
             <h1 className="font-display text-4xl font-medium text-burgundy-deep sm:text-5xl">This is what she&apos;ll see</h1>
-            <p className="mt-3 text-muted">
-              {design.reveal === "none" ? "It opens straight to your message." : "Open it, just like she will."}
-            </p>
+            <p className="mt-3 text-muted">Tap the envelope and open it, just like she will.</p>
           </div>
-          <Stage design={design} className="mt-10 min-h-[38rem] rounded-[2rem] px-4 py-12 sm:py-16">
-            <GiftView key={content.theme + content.giftType} gift={content} sealed />
-          </Stage>
-          {submitError && (
-            <p role="alert" className="mx-auto mt-8 max-w-md rounded-2xl border border-rose/30 bg-blush/50 px-5 py-3 text-center text-sm text-burgundy">
-              {submitError}
-            </p>
-          )}
-          <div className="mx-auto mt-10 flex max-w-2xl flex-col-reverse gap-3 sm:flex-row sm:justify-center">
+          <div className="mx-auto mt-10 max-w-lg">
+            <RoseGift key={content.theme + content.giftType} gift={content} />
+          </div>
+          <div className="mx-auto mt-10 flex max-w-2xl flex-col gap-3 sm:flex-row sm:justify-center">
             <button type="button" onClick={() => go("write")} className={secondaryButton}>
               <PenIcon className="size-4" />
               Edit words
@@ -479,20 +506,19 @@ export default function CreateFlow() {
               <PaletteIcon className="size-4" />
               Edit design
             </button>
-            <button type="button" onClick={submit} disabled={submitting} className={primaryButton}>
-              {submitting ? (
-                <>
-                  <span className="size-4 animate-spin rounded-full border-2 border-cream/30 border-t-cream" />
-                  Creating your gift…
-                </>
-              ) : (
-                <>
-                  Create &amp; get link
-                  <ArrowRightIcon className="size-4" />
-                </>
-              )}
-            </button>
           </div>
+          <Checkout
+            recipient={draft.recipientName.trim()}
+            phone={phone}
+            phoneError={phoneError}
+            onPhoneChange={(v) => {
+              setPhone(v);
+              setPhoneError(null);
+            }}
+            error={submitError}
+            submitting={submitting}
+            onSubmit={pay}
+          />
         </div>
       )}
 
@@ -503,65 +529,38 @@ export default function CreateFlow() {
 
 /* ------------------------------- Live preview ------------------------------- */
 
-function Stage({ design, className = "", children }: { design: Design; className?: string; children: ReactNode }) {
-  return (
-    <div className={`relative isolate flex items-center justify-center overflow-hidden ${className}`} style={{ background: pageBackdrop(design) }}>
-      <FloatingEffect effect={design.effect} color={design.accent || getTheme(design.theme).accent} className="-z-10" />
-      {children}
-    </div>
-  );
-}
-
 function LivePreview({ content }: { content: GiftContent }) {
-  const [mode, setMode] = useState<"card" | "opening">("card");
   const [replay, setReplay] = useState(0);
-  const design = parseDesign(content.theme, content.giftType);
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted">Live preview</p>
-        <div className="flex items-center gap-1 rounded-full border border-line bg-white/70 p-1 text-xs">
-          {(["card", "opening"] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => {
-                setMode(m);
-                setReplay((r) => r + 1);
-              }}
-              aria-pressed={mode === m}
-              className={`rounded-full px-3 py-1.5 font-medium capitalize transition-colors ${
-                mode === m ? "bg-burgundy text-cream" : "text-muted hover:text-burgundy"
-              }`}
-            >
-              {m}
-            </button>
-          ))}
-          {mode === "opening" && (
-            <button
-              type="button"
-              onClick={() => setReplay((r) => r + 1)}
-              className="grid size-7 place-items-center rounded-full text-muted hover:text-burgundy"
-              aria-label="Replay opening"
-            >
-              <RefreshIcon className="size-3.5" />
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={() => setReplay((r) => r + 1)}
+          className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white/70 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-burgundy"
+        >
+          <RefreshIcon className="size-3.5" />
+          Replay
+        </button>
       </div>
-      <Stage design={design} className="rounded-[1.75rem] p-4 sm:p-5">
-        {mode === "card" ? (
-          <GiftView gift={content} compact />
-        ) : (
-          <GiftView key={`${replay}-${content.theme}`} gift={content} sealed />
-        )}
-      </Stage>
+      <RoseGift key={`${replay}-${content.theme}`} gift={content} />
     </div>
   );
 }
 
 /* ------------------------------- Design panel ------------------------------- */
+
+const WAX = [
+  { name: "Classic", value: "" },
+  { name: "Crimson", value: "#8e1b2c" },
+  { name: "Gold", value: "#c89a6e" },
+  { name: "Rose", value: "#c06476" },
+  { name: "Ivory", value: "#e6d8c0" },
+  { name: "Midnight", value: "#1f2a5c" },
+  { name: "Black", value: "#1b1416" },
+];
 
 function DesignPanel({
   design,
@@ -578,21 +577,16 @@ function DesignPanel({
   onBack: () => void;
   onNext: () => void;
 }) {
-  const [group, setGroup] = useState<ThemeGroup | "all">("all");
   const occasion = getOccasion(design.occasion);
-  const activeLook = design.accent
-    ? undefined
-    : LOOKS.find((l) => (Object.keys(l.design) as (keyof Look["design"])[]).every((k) => l.design[k] === design[k]));
-  const themes = group === "all" ? THEMES : THEMES.filter((t) => t.group === group);
   const style = designStyle(design);
-  const accent = design.accent || getTheme(design.theme).accent;
+  const wax = designColors({ ...design, accent: "" }).seal;
 
   return (
     <div className="animate-fade-up space-y-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-4xl font-medium text-burgundy-deep sm:text-5xl">Design your gift</h1>
-          <p className="mt-3 text-muted">Start from a curated look, then make every detail your own.</p>
+          <h1 className="font-display text-4xl font-medium text-burgundy-deep sm:text-5xl">Design her rose</h1>
+          <p className="mt-3 text-muted">Pick the rose, seal the envelope, and choose how your words are written.</p>
         </div>
         <button type="button" onClick={() => onChange(randomDesign(design))} className={secondaryButton}>
           <ShuffleIcon className="size-4" />
@@ -600,131 +594,50 @@ function DesignPanel({
         </button>
       </div>
 
-      <Fieldset legend="Start from a look">
+      <Fieldset legend="Rose colour">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {LOOKS.map((look) => {
-            const t = getTheme(look.design.theme);
-            const font = FONTS.find((f) => f.id === look.design.font)!;
-            return (
-              <ChoiceTile
-                key={look.id}
-                name="look"
-                checked={activeLook?.id === look.id}
-                onChange={() => onChange({ ...look.design, accent: "" })}
-                className="p-2.5"
-              >
-                <span
-                  className="relative grid aspect-[5/3] place-items-center overflow-hidden rounded-xl border border-black/5"
-                  style={{ background: t.background, color: t.accent }}
-                >
-                  <span
-                    className="text-3xl leading-none"
-                    style={{
-                      fontFamily: font.heading,
-                      fontStyle: font.italic ? "italic" : "normal",
-                      fontWeight: font.weight,
-                      fontSize: `${1.9 * font.headingScale}rem`,
-                    }}
-                  >
-                    {recipient.split(" ")[0]}
-                  </span>
-                </span>
-                <span className="mt-2.5 block px-1 text-sm font-medium text-ink">{look.name}</span>
-                <span className="mb-1 mt-0.5 block px-1 text-xs leading-snug text-muted">{look.description}</span>
-              </ChoiceTile>
-            );
-          })}
-        </div>
-      </Fieldset>
-
-      <Fieldset
-        legend="Colour theme"
-        action={
-          <div className="flex gap-1 rounded-full border border-line bg-white/70 p-1 text-xs">
-            {THEME_GROUPS.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => setGroup(g.id)}
-                aria-pressed={group === g.id}
-                className={`rounded-full px-3 py-1.5 font-medium transition-colors ${
-                  group === g.id ? "bg-burgundy text-cream" : "text-muted hover:text-burgundy"
-                }`}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:grid-cols-6">
-          {themes.map((t) => (
-            <ChoiceTile key={t.id} name="theme" checked={design.theme === t.id} onChange={() => onChange({ theme: t.id })} className="p-2">
+          {ROSES.map((r) => (
+            <ChoiceTile key={r.id} name="rose" checked={design.rose === r.id} onChange={() => onChange({ rose: r.id })} className="p-3.5">
               <span
-                className="grid aspect-square w-full place-items-center rounded-lg border border-black/5 font-display text-2xl italic"
-                style={{ background: t.swatch, color: t.dark ? t.ink : t.accent }}
-              >
-                Aa
-              </span>
-              <span className="mt-2 block truncate px-0.5 text-xs font-medium text-ink">{t.name}</span>
+                className="block size-10 rounded-full shadow-soft"
+                style={{ background: `radial-gradient(circle at 40% 35%, ${r.sheen}, ${r.petal} 45%, ${r.deep})` }}
+              />
+              <span className="mt-2.5 block text-sm font-medium text-ink">{r.name}</span>
             </ChoiceTile>
           ))}
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white/60 px-4 py-3">
-          <label className="relative grid size-9 cursor-pointer place-items-center overflow-hidden rounded-full border border-black/10 shadow-soft" style={{ background: accent }}>
-            <input
-              type="color"
-              value={accent}
-              onChange={(e) => onChange({ accent: e.target.value })}
-              className="absolute inset-0 size-full cursor-pointer opacity-0"
-              aria-label="Custom accent colour"
-            />
-          </label>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-ink">Accent colour</p>
-            <p className="text-xs text-muted">{design.accent ? `Custom ${design.accent.toUpperCase()}` : "Matches the theme. Tap the circle to pick your own."}</p>
-          </div>
-          {design.accent && (
-            <button type="button" onClick={() => onChange({ accent: "" })} className="text-sm font-medium text-burgundy hover:text-rose">
-              Reset
-            </button>
-          )}
         </div>
       </Fieldset>
 
-      <Fieldset legend="Card style">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {LAYOUTS.map((l) => (
-            <ChoiceTile
-              key={l.id}
-              name="layout"
-              checked={design.layout === l.id}
-              onChange={() => onChange({ layout: l.id, align: l.align })}
-              className="p-2.5"
-            >
-              <LayoutThumb id={l.id} style={style} />
-              <span className="mt-2.5 block px-0.5 text-sm font-medium text-ink">{l.name}</span>
-              <span className="mb-0.5 block px-0.5 text-xs text-muted">{l.description}</span>
+      <Fieldset legend="Wax seal">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {SEALS.map((s) => (
+            <ChoiceTile key={s.id} name="seal" checked={design.seal === s.id} onChange={() => onChange({ seal: s.id })} className="p-3.5">
+              <span
+                style={{ ...style, background: "radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--g-seal) 72%, white), var(--g-seal) 72%)" }}
+                className="grid size-12 place-items-center rounded-full text-(--g-seal-ink) shadow-soft"
+              >
+                <Emblem kind={s.id} ctx={{ sender: sender || "You", occasion }} size={20} />
+              </span>
+              <span className="mt-2.5 block text-sm font-medium text-ink">{s.name}</span>
             </ChoiceTile>
           ))}
         </div>
-        <div className="mt-4 flex items-center gap-3">
-          <span className="text-sm text-muted">Text alignment</span>
-          <div className="flex gap-1 rounded-full border border-line bg-white/70 p-1 text-xs">
-            {(["start", "center"] as const).map((a) => (
-              <button
-                key={a}
-                type="button"
-                onClick={() => onChange({ align: a })}
-                aria-pressed={design.align === a}
-                className={`rounded-full px-3.5 py-1.5 font-medium transition-colors ${
-                  design.align === a ? "bg-burgundy text-cream" : "text-muted hover:text-burgundy"
-                }`}
-              >
-                {a === "start" ? "Left" : "Centred"}
-              </button>
-            ))}
-          </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2.5 rounded-2xl border border-line bg-white/60 px-4 py-3">
+          <span className="mr-1 text-sm font-medium text-ink">Wax colour</span>
+          {WAX.map((w) => (
+            <button
+              key={w.name}
+              type="button"
+              title={w.name}
+              aria-label={`${w.name} wax`}
+              aria-pressed={design.accent === w.value}
+              onClick={() => onChange({ accent: w.value })}
+              className={`size-8 rounded-full border border-black/10 shadow-soft transition-transform hover:scale-110 ${
+                design.accent === w.value ? "ring-2 ring-burgundy ring-offset-2" : ""
+              }`}
+              style={{ background: `radial-gradient(circle at 35% 30%, color-mix(in srgb, ${w.value || wax} 70%, white), ${w.value || wax} 70%)` }}
+            />
+          ))}
         </div>
       </Fieldset>
 
@@ -749,63 +662,6 @@ function DesignPanel({
         </div>
       </Fieldset>
 
-      <Fieldset legend="How it opens">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {REVEALS.map((r) => (
-            <ChoiceTile key={r.id} name="reveal" checked={design.reveal === r.id} onChange={() => onChange({ reveal: r.id })}>
-              <RevealThumb id={r.id} />
-              <span className="mt-3 block text-sm font-medium text-ink">{r.name}</span>
-              <span className="mt-0.5 block text-xs leading-snug text-muted">{r.description}</span>
-            </ChoiceTile>
-          ))}
-        </div>
-      </Fieldset>
-
-      {design.reveal !== "none" && (
-        <Fieldset legend="Seal emblem">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {SEALS.map((s) => (
-              <ChoiceTile key={s.id} name="seal" checked={design.seal === s.id} onChange={() => onChange({ seal: s.id })} className="p-3.5">
-                <span
-                  style={{ ...style, background: "radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--g-seal) 72%, white), var(--g-seal) 72%)" }}
-                  className="grid size-12 place-items-center rounded-full text-(--g-seal-ink) shadow-soft"
-                >
-                  <Emblem kind={s.id} ctx={{ sender: sender || "You", occasion }} size={20} />
-                </span>
-                <span className="mt-2.5 block text-sm font-medium text-ink">{s.name}</span>
-              </ChoiceTile>
-            ))}
-          </div>
-        </Fieldset>
-      )}
-
-      <Fieldset legend="Background effect">
-        <div className="flex flex-wrap gap-2">
-          {EFFECTS.map((e) => (
-            <Chip key={e.id} name="effect" checked={design.effect === e.id} onChange={() => onChange({ effect: e.id })}>
-              <EffectIcon id={e.id} />
-              {e.name}
-            </Chip>
-          ))}
-        </div>
-        <label className="mt-5 flex cursor-pointer items-center justify-between gap-4 rounded-2xl border border-line bg-white/60 px-4 py-3.5">
-          <span>
-            <span className="block text-sm font-medium text-ink">Celebration burst</span>
-            <span className="block text-xs text-muted">A little shower of joy the moment she opens it.</span>
-          </span>
-          <input
-            type="checkbox"
-            checked={design.burst}
-            onChange={(e) => onChange({ burst: e.target.checked })}
-            className="peer sr-only"
-          />
-          <span
-            aria-hidden
-            className="relative h-7 w-12 shrink-0 rounded-full bg-line transition-colors peer-checked:bg-burgundy peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-burgundy after:absolute after:left-1 after:top-1 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"
-          />
-        </label>
-      </Fieldset>
-
       <div className="flex flex-col-reverse gap-3 border-t border-line pt-8 sm:flex-row sm:items-center sm:justify-between">
         <button type="button" onClick={onBack} className="inline-flex items-center justify-center gap-1.5 text-sm text-muted transition-colors hover:text-burgundy">
           <ArrowLeftIcon className="size-4" />
@@ -813,118 +669,155 @@ function DesignPanel({
         </button>
         <button type="button" onClick={onNext} className={primaryButton}>
           <EyeIcon className="size-4" />
-          Preview your gift
+          Preview her rose
         </button>
       </div>
     </div>
   );
 }
 
-type Look = (typeof LOOKS)[number];
-
-function LayoutThumb({ id, style }: { id: LayoutId; style: CSSProperties }) {
-  const bar = "absolute h-[3px] rounded-full bg-(--g-accent)";
+/** Our signature gift, front and centre on the first step. */
+function RoseBanner({ design, onChange }: { design: Design; onChange: (patch: Partial<Design>) => void }) {
   return (
-    <span style={style} className="relative block aspect-[4/5] overflow-hidden rounded-lg border border-black/5" aria-hidden>
-      {id === "classic" && (
-        <>
-          <span className="absolute inset-1.5 rounded-md border border-(--g-line)" />
-          <span className={`${bar} left-3 top-3 w-6 opacity-60`} />
-          <span className={`${bar} left-3 top-6 h-1.5! w-12 opacity-90`} />
-          <span className={`${bar} left-3 top-10 w-14 opacity-30`} />
-          <span className={`${bar} left-3 top-12 w-11 opacity-30`} />
-          <span className={`${bar} left-3 top-14 w-13 opacity-30`} />
-          <span className="absolute inset-x-3 bottom-5 h-px bg-(--g-line)" />
-          <span className={`${bar} bottom-3 left-3 w-7 opacity-70`} />
-        </>
-      )}
-      {id === "letter" && (
-        <>
-          <span
-            className="absolute inset-0 opacity-80"
-            style={{ backgroundImage: "repeating-linear-gradient(to bottom, transparent 0 7px, var(--g-line) 7px 8px)" }}
-          />
-          <span className="absolute inset-y-0 left-2 w-px bg-(--g-accent)/40" />
-          <span className="absolute -top-0.5 left-1/2 h-2.5 w-8 -translate-x-1/2 -rotate-3 bg-white/60" />
-          <span className={`${bar} left-4 top-5 h-1.5! w-10 opacity-90`} />
-          <span className={`${bar} left-4 top-9 w-14 opacity-30`} />
-          <span className={`${bar} left-4 top-11 w-12 opacity-30`} />
-          <span className={`${bar} bottom-3 right-3 w-8 opacity-70`} />
-        </>
-      )}
-      {id === "postcard" && (
-        <>
-          <span className="absolute inset-x-0 top-0 h-[38%] bg-(--g-accent)/15" />
-          <span className="absolute right-2 top-2 size-5 rotate-6 rounded-[2px] border border-dashed border-(--g-accent)/60 bg-(--g-seal)/80" />
-          <span
-            className="absolute inset-x-0 top-[38%] h-[3px] opacity-70"
-            style={{ background: "repeating-linear-gradient(135deg, var(--g-accent) 0 4px, transparent 4px 8px)" }}
-          />
-          <span className={`${bar} left-3 top-[48%] h-1.5! w-12 opacity-90`} />
-          <span className={`${bar} left-3 top-[62%] w-14 opacity-30`} />
-          <span className={`${bar} left-3 top-[70%] w-11 opacity-30`} />
-          <span className={`${bar} bottom-3 left-3 w-7 opacity-70`} />
-        </>
-      )}
-      {id === "minimal" && (
-        <>
-          <span className={`${bar} left-1/2 top-6 h-1.5! w-12 -translate-x-1/2 opacity-90`} />
-          <span className="absolute left-1/2 top-10 h-px w-4 -translate-x-1/2 bg-(--g-accent)" />
-          <span className={`${bar} left-1/2 top-13 w-12 -translate-x-1/2 opacity-30`} />
-          <span className={`${bar} left-1/2 top-15 w-10 -translate-x-1/2 opacity-30`} />
-          <span className={`${bar} bottom-4 left-1/2 w-7 -translate-x-1/2 opacity-70`} />
-        </>
-      )}
-      {id === "keepsake" && (
-        <>
-          <span className="absolute inset-1 rounded-md border border-(--g-line)" />
-          <span className="absolute inset-2 rounded border border-(--g-line)" />
-          <span className="absolute left-1/2 top-3.5 size-4 -translate-x-1/2 rounded-full border border-(--g-accent)/60" />
-          <span className={`${bar} left-1/2 top-10 h-1.5! w-12 -translate-x-1/2 opacity-90`} />
-          <span className={`${bar} left-1/2 top-14 w-12 -translate-x-1/2 opacity-30`} />
-          <span className={`${bar} left-1/2 top-16 w-9 -translate-x-1/2 opacity-30`} />
-          <span className={`${bar} bottom-4 left-1/2 w-7 -translate-x-1/2 opacity-70`} />
-        </>
-      )}
-    </span>
+    <section className="relative isolate overflow-hidden rounded-3xl bg-[linear-gradient(140deg,#2a0a12,#14060a)] p-6 text-cream shadow-lift sm:p-7">
+      <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(60%_80%_at_100%_0%,rgb(156_10_34/0.45),transparent_70%)]" />
+      <div className="flex items-start gap-4">
+        <span className="grid size-12 shrink-0 place-items-center rounded-full border border-white/15 bg-white/5 text-[#ff8da1] shadow-[0_0_30px_-6px_#ff4d6d]">
+          <RoseIcon className="size-6" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider">
+              <StarSolid className="size-3 text-gold" />
+              Popular
+            </span>
+            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider">Best gift ever</span>
+          </div>
+          <h2 className="mt-3 font-display text-2xl font-medium sm:text-3xl">You&apos;re making her a Digital Rose</h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-cream/65">
+            A 3D rose blooms out of a sealed envelope and your words float around it. She can turn it with her finger and replay it
+            whenever she misses you.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-white/10 pt-5">
+        <span className="text-sm text-cream/60">Her rose:</span>
+        <div className="flex items-center gap-2" role="radiogroup" aria-label="Rose colour">
+          {ROSES.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              role="radio"
+              aria-checked={design.rose === r.id}
+              aria-label={r.name}
+              title={r.name}
+              onClick={() => onChange({ rose: r.id })}
+              className={`size-8 rounded-full transition-transform hover:scale-110 ${
+                design.rose === r.id ? "ring-2 ring-cream ring-offset-2 ring-offset-[#1d070d]" : ""
+              }`}
+              style={{ background: `radial-gradient(circle at 38% 32%, ${r.sheen}, ${r.petal} 45%, ${r.deep})` }}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
-function RevealThumb({ id }: { id: RevealId }) {
-  const cls = "size-6";
+/* --------------------------------- Checkout --------------------------------- */
+
+function Checkout({
+  recipient,
+  phone,
+  phoneError,
+  onPhoneChange,
+  error,
+  submitting,
+  onSubmit,
+}: {
+  recipient: string;
+  phone: string;
+  phoneError: string | null;
+  onPhoneChange: (v: string) => void;
+  error: string | null;
+  submitting: boolean;
+  onSubmit: (e: FormEvent) => void;
+}) {
   return (
-    <span className="grid size-11 place-items-center rounded-full bg-blush/70 text-burgundy">
-      {id === "seal" && <HeartSolid className="size-5" />}
-      {id === "envelope" && <EnvelopeIcon className={cls} />}
-      {id === "giftbox" && <GiftBoxIcon className={cls} />}
-      {id === "none" && <SparkleIcon className={cls} />}
-    </span>
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="mx-auto mt-12 max-w-md rounded-[2rem] border border-line bg-white/70 p-6 shadow-soft sm:p-8"
+    >
+      <h2 className="font-display text-3xl font-medium text-burgundy-deep">Send it to {recipient || "her"}</h2>
+      <p className="mt-1.5 text-sm text-muted">Pay once and get a private link she can open on any device.</p>
+
+      <div className="mt-6 flex items-center justify-between gap-4 border-y border-line py-4">
+        <span className="flex items-center gap-2.5 text-sm text-ink">
+          <RoseIcon className="size-5 text-rose" />
+          Digital Rose{recipient && ` for ${recipient}`}
+        </span>
+        <span className="font-display text-2xl font-semibold tabular-nums text-burgundy-deep">₹{GIFT_PRICE}</span>
+      </div>
+
+      <label className="mt-6 block">
+        <span className="mb-2 block text-sm font-medium text-ink">Your mobile number</span>
+        <span
+          className={`flex items-center rounded-2xl border bg-white/70 transition-colors focus-within:border-burgundy focus-within:bg-white focus-within:ring-4 focus-within:ring-blush ${
+            phoneError ? "border-rose" : "border-line"
+          }`}
+        >
+          <span className="border-r border-line py-3 pl-4 pr-3 text-ink">+91</span>
+          <input
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel-national"
+            value={phone}
+            onChange={(e) => onPhoneChange(e.target.value)}
+            placeholder="98765 43210"
+            maxLength={16}
+            aria-invalid={!!phoneError}
+            className="min-w-0 flex-1 bg-transparent px-3 py-3 text-ink outline-none placeholder:text-muted/60"
+          />
+        </span>
+        {phoneError ? (
+          <span className="mt-1.5 block text-sm text-rose">{phoneError}</span>
+        ) : (
+          <span className="mt-1.5 block text-xs text-muted">Needed by our payment partner for your receipt.</span>
+        )}
+      </label>
+
+      {error && (
+        <p role="alert" className="mt-5 rounded-2xl border border-rose/30 bg-blush/50 px-4 py-3 text-sm text-burgundy">
+          {error}
+        </p>
+      )}
+
+      <button type="submit" disabled={submitting} className={`${primaryButton} mt-6 w-full`}>
+        {submitting ? (
+          <>
+            <span className="size-4 animate-spin rounded-full border-2 border-cream/30 border-t-cream" />
+            Taking you to payment…
+          </>
+        ) : (
+          <>
+            Pay ₹{GIFT_PRICE} &amp; get link
+            <ArrowRightIcon className="size-4" />
+          </>
+        )}
+      </button>
+      <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-muted">
+        <LockIcon className="size-3.5" />
+        Secure checkout by Cashfree · UPI, cards &amp; net banking
+      </p>
+    </form>
   );
 }
 
-function EffectIcon({ id }: { id: EffectId }) {
-  const cls = "size-3.5";
-  if (id === "hearts") return <HeartSolid className={`${cls} text-rose`} />;
-  if (id === "petals") return <PetalSolid className={`${cls} text-rose`} />;
-  if (id === "sparkles") return <SparkleSolid className={`${cls} text-gold`} />;
-  if (id === "stars") return <StarIcon className={`${cls} text-gold`} />;
-  if (id === "bubbles") return <span className="size-3 rounded-full border-[1.5px] border-rose" />;
-  if (id === "confetti")
-    return (
-      <span className="flex gap-0.5">
-        <span className="h-3 w-1 rotate-12 rounded-[1px] bg-[#F2C14E]" />
-        <span className="h-3 w-1 -rotate-12 rounded-[1px] bg-rose" />
-        <span className="h-3 w-1 rotate-6 rounded-[1px] bg-[#7FD1C7]" />
-      </span>
-    );
-  return <CloseIcon className={`${cls} text-muted`} />;
-}
-
-/* ---------------------------------- Share ----------------------------------- */
-
-function ShareStep({ url, recipient }: { url: string; recipient: string }) {
+export function ShareStep({ url, recipient }: { url: string; recipient: string }) {
   const [copied, setCopied] = useState(false);
-  // Only rendered after the gift is created in the browser, so `navigator` is always available.
+  // Only rendered in the browser after payment, so `navigator` is always available.
   const canShare = "share" in navigator;
 
   const text = `I made something for you ❤️`;
@@ -1014,10 +907,20 @@ function ShareStep({ url, recipient }: { url: string; recipient: string }) {
         Tip: send it at a moment that matters, like first thing in the morning or right at midnight.
       </p>
 
-      <a href="/create" className="mt-8 inline-flex items-center gap-1.5 text-sm text-muted hover:text-burgundy">
-        <ArrowLeftIcon className="size-4" />
-        Create another gift
-      </a>
+      {/* A full page load, so the next gift starts from a clean draft. */}
+      <div className="relative isolate mt-10 overflow-hidden rounded-3xl bg-[linear-gradient(140deg,#2a0a12,#14060a)] p-7 text-cream shadow-lift">
+        <div aria-hidden className="absolute inset-0 -z-10 bg-[radial-gradient(60%_80%_at_50%_0%,rgb(156_10_34/0.45),transparent_70%)]" />
+        <p className="font-display text-2xl font-medium">Someone else deserves a rose too</p>
+        <p className="mt-1.5 text-sm text-cream/65">A friend, your mum, your sister. It only takes two minutes.</p>
+        <a
+          href="/create"
+          className="group mt-5 inline-flex h-13 items-center gap-2.5 rounded-full bg-cream px-7 text-[0.95rem] font-semibold text-burgundy-deep shadow-[0_0_32px_-6px_#ff4d6d] transition-all duration-300 hover:-translate-y-0.5 hover:bg-white"
+        >
+          <RoseIcon className="size-5" />
+          Create another gift
+          <ArrowRightIcon className="size-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+        </a>
+      </div>
     </div>
   );
 }
@@ -1078,12 +981,15 @@ function ChoiceTile({
   checked,
   onChange,
   className = "p-4",
+  badge,
   children,
 }: {
   name: string;
   checked: boolean;
   onChange: () => void;
   className?: string;
+  /** Small pill in the corner, e.g. "Popular". */
+  badge?: string;
   children: ReactNode;
 }) {
   return (
@@ -1093,6 +999,12 @@ function ChoiceTile({
       }`}
     >
       <input type="radio" name={name} checked={checked} onChange={onChange} className="sr-only" />
+      {badge && (
+        <span className="absolute left-2.5 top-2.5 z-10 inline-flex items-center gap-1 rounded-full bg-[linear-gradient(135deg,#c06476,#6b1d2f)] px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-wider text-cream shadow-soft">
+          <StarSolid className="size-2.5 text-gold" />
+          {badge}
+        </span>
+      )}
       {checked && (
         <span className="absolute right-2.5 top-2.5 z-10 grid size-5 place-items-center rounded-full bg-burgundy text-cream">
           <CheckIcon className="size-3" />

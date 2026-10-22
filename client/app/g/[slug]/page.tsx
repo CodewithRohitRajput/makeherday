@@ -2,11 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import FloatingEffect from "@/(components)/FloatingEffect";
-import GiftView from "@/(components)/GiftView";
+import { HeartIcon } from "@/(components)/Icons";
 import Logo from "@/(components)/Logo";
+import RoseGift from "@/(components)/rose/RoseGift";
 import { getGift } from "@/lib/api";
-import { designColors, pageBackdrop, parseDesign } from "@/lib/design";
 
 export const metadata: Metadata = {
   title: "A surprise for you",
@@ -27,52 +26,35 @@ async function Gift({ params }: { params: PageProps<"/g/[slug]">["params"] }) {
   const { slug } = await params;
   const gift = await getGift(slug);
   if (!gift) notFound();
+  if (gift.isPaid === false) return <Unpaid />;
 
-  const design = parseDesign(gift.theme, gift.giftType);
-  const { theme, accent } = designColors(design);
+  // Every gift opens as a Digital Rose, including ones made before cards were retired.
+  return <RoseGift gift={gift} fullscreen />;
+}
 
+function Unpaid() {
   return (
-    <>
-      <div aria-hidden className="absolute inset-0 -z-10" style={{ background: pageBackdrop(design) }} />
-      <FloatingEffect effect={design.effect} color={accent} className="-z-10" />
-
-      <header className="flex justify-center px-4 pt-8">
-        <Logo light={theme.dark} />
-      </header>
-
-      <div className="flex flex-1 items-center justify-center px-4 py-12 sm:py-16">
-        <GiftView gift={gift} sealed />
-      </div>
-
-      <footer className={`px-4 pb-10 text-center text-sm ${theme.dark ? "text-white/60" : "text-muted"}`}>
-        Want to make someone&apos;s day?{" "}
-        <Link
-          href="/create"
-          className={`font-medium underline-offset-4 hover:underline ${theme.dark ? "text-white" : "text-burgundy"}`}
-        >
-          Create your own surprise
-        </Link>
-      </footer>
-    </>
+    <div className="flex flex-1 flex-col items-center justify-center px-4 py-24 text-center">
+      <Logo />
+      <span className="mt-14 grid size-16 place-items-center rounded-full border border-line bg-white/60 text-rose">
+        <HeartIcon className="size-7" />
+      </span>
+      <h1 className="mt-6 font-display text-4xl font-medium text-burgundy-deep sm:text-5xl">This gift isn&apos;t ready yet</h1>
+      <p className="mt-3 max-w-md text-muted">It&apos;s still being finished. Check back soon, or ask the person who sent it.</p>
+      <Link
+        href="/"
+        className="mt-8 inline-flex h-12 items-center rounded-full bg-burgundy px-7 text-sm font-medium text-cream shadow-lift transition-colors hover:bg-burgundy-deep"
+      >
+        Back to home
+      </Link>
+    </div>
   );
 }
 
 function GiftSkeleton() {
   return (
-    <>
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_50%_0%,rgb(243_219_214/0.85),transparent_70%)]"
-      />
-      <header className="flex justify-center px-4 pt-8">
-        <Logo />
-      </header>
-      <div className="flex flex-1 items-center justify-center px-4 py-12 sm:py-16">
-        <div
-          className="mx-auto aspect-[4/5] w-full max-w-md animate-pulse rounded-[2rem] bg-blush/60"
-          aria-label="Loading your gift"
-        />
-      </div>
-    </>
+    <div aria-label="Loading your gift" className="fixed inset-0 grid h-dvh place-items-center bg-[#0d0507]">
+      <span className="size-10 animate-ping rounded-full bg-[#ff4d6d]/40" />
+    </div>
   );
 }
