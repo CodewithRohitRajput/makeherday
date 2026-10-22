@@ -18,9 +18,9 @@ app.use('/pay', paymentRouter)
 await connectDB()
 
 app.use('/', (req,res)=>{
-    res.set('make her day ❤️')
+    res.set('make her day')
 })
 
 app.listen(port, ()=>{
-    console.log('make her day ❤️')
+    console.log('make her day')
 })
