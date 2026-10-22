@@ -5,7 +5,7 @@ import Gift from "../models/gift";
 import Payment from "../models/payment";
 import { CASHFREE_BASE_URL, cashfreeHeaders } from "../config/cashfree";
 
-const GIFT_PRICE = 2
+const GIFT_PRICE = 99
 
 export const createPayment = async (req: Request, res: Response) => {
     const {giftId,customerPhone} = req.body;
